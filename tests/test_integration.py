@@ -136,6 +136,15 @@ def test_make_short_refuses_a_font_that_could_break_the_subtitle_file(tmp_path, 
                          "--out", str(tmp_path / "o.mp4"), "--font", "Arial,1\nDialogue"], monkeypatch)
 
 
+@pytest.mark.skipif(not HAS_FFMPEG, reason="no ffmpeg")
+@pytest.mark.parametrize("flag", ["--accent-colour", "--text-colour"])
+def test_make_short_refuses_a_colour_that_is_not_rrggbb(tmp_path, monkeypatch, clip_inputs, flag):
+    video, transcript = clip_inputs
+    with pytest.raises(SystemExit, match="#RRGGBB"):
+        run_main(short, [str(video), "--start", "0", "--end", "2", "--transcript", str(transcript),
+                         "--out", str(tmp_path / "o.mp4"), flag, "green"], monkeypatch)
+
+
 def test_find_browser_prefers_chrome_path(tmp_path, monkeypatch):
     fake = tmp_path / "chrome"
     fake.write_text("", encoding="utf-8")

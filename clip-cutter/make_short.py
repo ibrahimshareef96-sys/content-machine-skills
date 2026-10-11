@@ -7,6 +7,11 @@
 Captions come from transcript.json (made by transcribe.py): 3 words at a time, the spoken
 word in the accent colour. Crop is centred; move it with --x (0 = left edge, 1 = right edge).
 Needs ffmpeg built with libass (the Homebrew and most Linux builds are).
+
+Defaults: captions in Satoshi Black and the spoken word in green #34D07F. Both are settings,
+not rules: pass --font and --accent-colour with the values in your brand-brain. ffmpeg needs the
+font installed as its own file (a variable font is not enough); when it is missing, a bold
+system sans stands in and the script prints a warning naming the face it used.
 """
 import argparse
 import json
@@ -19,6 +24,9 @@ import tempfile
 from typing import NamedTuple
 
 WIDTH, HEIGHT = 1080, 1920
+DEFAULT_FONT = "Satoshi Black"
+DEFAULT_TEXT_COLOUR = "#FFFFFF"
+DEFAULT_ACCENT_COLOUR = "#34D07F"  # configurable with --accent-colour; any #RRGGBB works
 
 
 class Word(NamedTuple):
@@ -90,6 +98,31 @@ def build_ass(words: list[Word], font: str, text_hex: str, accent_hex: str, per_
     return header + "\n".join(events) + "\n"
 
 
+FONTSELECT = re.compile(r"fontselect: \(.*?\) -> .*?, -?\d+, (\S+)")
+
+
+def font_warning(font: str, tmp: str) -> str | None:
+    """Ask libass which face it picks for the caption style (a one-frame run on a blank frame). Returns a warning
+    when the font is not installed and another face stands in, so a missing font never passes silently."""
+    probe = pathlib.Path(tmp) / "font-probe.ass"
+    probe.write_text(build_ass([Word(0.0, 1.0, "Ag")], font, DEFAULT_TEXT_COLOUR, DEFAULT_ACCENT_COLOUR), encoding="utf-8")
+    cmd = ["ffmpeg", "-hide_banner", "-loglevel", "verbose", "-f", "lavfi", "-i", f"color=c=black:s={WIDTH}x{HEIGHT}:d=0.2",
+           "-vf", f"ass=filename={probe.name}", "-frames:v", "1", "-f", "null", "-"]
+    try:
+        result = subprocess.run(cmd, capture_output=True, text=True, cwd=tmp, timeout=60)
+    except subprocess.TimeoutExpired:
+        return "could not check the caption font (ffmpeg took over a minute)."
+    match = FONTSELECT.search(result.stderr)
+    if not match:
+        return "could not check the caption font (ffmpeg did not say which face it used)."
+    picked = match.group(1)
+    squash = picked.lower().replace("-", "").replace("_", "")
+    if all(word.lower() in squash for word in re.split(r"[ _-]+", font) if word):
+        return None
+    return (f'"{font}" is not installed as its own font file, so the captions use {picked}. Install it, '
+            "or pass --font with an installed font.")
+
+
 def load_words(path: pathlib.Path) -> list[Word]:
     data = json.loads(path.read_text(encoding="utf-8"))
     return [Word(float(w["start"]), float(w["end"]), str(w["text"])) for w in data["words"]]
@@ -103,9 +136,11 @@ def main() -> None:
     ap.add_argument("--transcript", type=pathlib.Path, required=True)
     ap.add_argument("--out", type=pathlib.Path, required=True)
     ap.add_argument("--x", type=float, default=0.5, help="horizontal crop centre, 0 to 1 (default 0.5)")
-    ap.add_argument("--font", default="Arial", help="an installed font name")
-    ap.add_argument("--text-colour", default="#FFFFFF")
-    ap.add_argument("--accent-colour", default="#D7FD64")
+    ap.add_argument("--font", default=DEFAULT_FONT,
+                    help=f"an installed font name (default {DEFAULT_FONT}; a warning names the stand-in if it is missing)")
+    ap.add_argument("--text-colour", default=DEFAULT_TEXT_COLOUR, help=f"caption text, #RRGGBB (default {DEFAULT_TEXT_COLOUR})")
+    ap.add_argument("--accent-colour", default=DEFAULT_ACCENT_COLOUR,
+                    help=f"the spoken word, #RRGGBB (default {DEFAULT_ACCENT_COLOUR}); use your brand accent")
     args = ap.parse_args()
 
     if shutil.which("ffmpeg") is None:
@@ -120,12 +155,20 @@ def main() -> None:
         sys.exit("--x must be between 0 and 1.")
     if not re.fullmatch(r"[A-Za-z0-9 _-]{1,64}", args.font):
         sys.exit("--font may only contain letters, numbers, spaces, - and _.")
+    for flag, value in (("--text-colour", args.text_colour), ("--accent-colour", args.accent_colour)):
+        try:
+            hex_to_ass(value)
+        except ValueError:
+            sys.exit(f"{flag} must be a #RRGGBB colour, like {DEFAULT_ACCENT_COLOUR}.")
 
     words = words_in_range(load_words(args.transcript), args.start, args.end)
     ass = build_ass(words, args.font, args.text_colour, args.accent_colour)
     args.out.parent.mkdir(parents=True, exist_ok=True)
 
     with tempfile.TemporaryDirectory() as tmp:
+        warning = font_warning(args.font, tmp)
+        if warning:
+            print(f"warning: {warning}", file=sys.stderr)
         sub = pathlib.Path(tmp) / "captions.ass"
         sub.write_text(ass, encoding="utf-8")
         crop = (f"scale=-2:{HEIGHT},crop='min(iw,{WIDTH})':{HEIGHT}:'(iw-min(iw,{WIDTH}))*{args.x}':0,"

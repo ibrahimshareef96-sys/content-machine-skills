@@ -23,8 +23,27 @@ transcribe = load("clip-cutter/transcribe.py")
 
 
 def test_hex_to_ass_reverses_to_bgr():
-    assert short.hex_to_ass("#D7FD64") == "&H0064FDD7"
+    assert short.hex_to_ass("#34D07F") == "&H007FD034"
     assert short.hex_to_ass("ffffff") == "&H00FFFFFF"
+
+
+@pytest.mark.parametrize(("font", "stderr", "expected"), [
+    ("Satoshi Black", "[ass] fontselect: (Satoshi Black, 700, 0) -> /System/Library/Fonts/Helvetica.ttc, -1, Helvetica-Bold\n",
+     "captions use Helvetica-Bold"),
+    ("Satoshi Black", "[ass] fontselect: (Satoshi Black, 700, 0) -> /Library/Fonts/Satoshi-Black.otf, 0, Satoshi-Black\n", None),
+    ("Arial", "[ass] fontselect: (Arial, 700, 0) -> /Library/Fonts/Arial Bold.ttf, 0, Arial-BoldMT\n", None),
+    ("Satoshi Black", "nothing about fonts\n", "could not check the caption font"),
+])
+def test_font_warning_names_the_face_that_stood_in(tmp_path, monkeypatch, font, stderr, expected):
+    monkeypatch.setattr(short.subprocess, "run", lambda *a, **k: short.subprocess.CompletedProcess(a, 0, "", stderr))
+    got = short.font_warning(font, str(tmp_path))
+    assert got is None if expected is None else expected in got
+
+
+def test_caption_defaults_are_satoshi_black_and_the_tier_green():
+    assert short.DEFAULT_FONT == "Satoshi Black"
+    assert short.DEFAULT_ACCENT_COLOUR == "#34D07F"
+    assert short.DEFAULT_TEXT_COLOUR == "#FFFFFF"
 
 
 @pytest.mark.parametrize("bad", ["#FFF", "#GGGGGG", "", "#1234567"])
@@ -60,15 +79,16 @@ def test_words_in_range_retimes_and_filters():
 
 def test_build_ass_highlights_one_word_per_event():
     words = [short.Word(0.0, 0.3, "one"), short.Word(0.3, 0.6, "two"), short.Word(0.6, 0.9, "three"), short.Word(0.9, 1.2, "four")]
-    ass = short.build_ass(words, "Arial", "#FFFFFF", "#D7FD64", per_line=3)
+    ass = short.build_ass(words, "Satoshi Black", "#FFFFFF", "#34D07F", per_line=3)
     events = [line for line in ass.splitlines() if line.startswith("Dialogue:")]
     assert len(events) == 4
-    assert all(e.count("&H0064FDD7") == 1 for e in events)
+    assert all(e.count("&H007FD034") == 1 for e in events)
     assert "PlayResX: 1080" in ass and "PlayResY: 1920" in ass
+    assert "Style: Cap,Satoshi Black,84," in ass
 
 
 def test_build_ass_with_no_words_has_no_events():
-    assert "Dialogue:" not in short.build_ass([], "Arial", "#FFFFFF", "#D7FD64")
+    assert "Dialogue:" not in short.build_ass([], "Satoshi Black", "#FFFFFF", "#34D07F")
 
 
 def test_count_slides_ignores_comments_and_other_classes():

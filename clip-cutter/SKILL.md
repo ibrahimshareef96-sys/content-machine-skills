@@ -35,7 +35,10 @@ making sense to someone who never saw the long version.
 3. **Cut each short:**
    `python3 <skill folder>/make_short.py <video> --start <s> --end <e> --transcript content/clips/<name>/transcript.json --out content/clips/<name>/short-<n>.mp4 --font "<brain font>" --text-colour "<brain text hex>" --accent-colour "<brain accent hex>"`
    The crop is centred. If the speaker sits left or right in the frame, set `--x` (0 is the
-   left edge, 1 the right edge).
+   left edge, 1 the right edge). Leave out `--font` and `--accent-colour` and the captions use
+   Satoshi Black with the spoken word in green `#34D07F`; both are settings, so the brain's
+   values always win. If the font is not installed as its own file, the script warns and names
+   the face that stood in: tell the owner, and cut again with a font they have.
 4. **Check every short yourself.** Pull two frames from each
    (`ffmpeg -ss 5 -i short-1.mp4 -frames:v 1 check-1.jpg`, and one near the end) and look at
    them: is the speaker's face in frame, are the captions readable and not over the mouth or
