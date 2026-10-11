@@ -13,6 +13,8 @@ not rules: pass --font and --accent-colour with the values in your brand-brain. 
 font installed as its own file (a variable font is not enough); when it is missing, a bold
 system sans stands in and the script prints a warning naming the face it used.
 """
+from __future__ import annotations
+
 import argparse
 import json
 import re
@@ -98,28 +100,52 @@ def build_ass(words: list[Word], font: str, text_hex: str, accent_hex: str, per_
     return header + "\n".join(events) + "\n"
 
 
-FONTSELECT = re.compile(r"fontselect: \(.*?\) -> .*?, -?\d+, (\S+)")
+# libass at -loglevel verbose: "fontselect: (Family, 700, 0) -> /path/to/file.ttf, 0, PostScriptName"
+FONTSELECT = re.compile(r"fontselect: \(.*?\) -> (.+), (-?\d+), (\S+)\s*$", re.M)
+# A family no computer has: whatever libass picks for it is the stand-in face.
+NO_SUCH_FONT = "Zzq No Such Font"
 
 
-def font_warning(font: str, tmp: str) -> str | None:
-    """Ask libass which face it picks for the caption style (a one-frame run on a blank frame). Returns a warning
-    when the font is not installed and another face stands in, so a missing font never passes silently."""
+def picked_face(font: str, tmp: str) -> tuple[str, str] | str:
+    """The (file, PostScript name) libass picks for a caption style in this font, from a one-frame run on a blank
+    frame; or a sentence saying why it could not tell."""
     probe = pathlib.Path(tmp) / "font-probe.ass"
     probe.write_text(build_ass([Word(0.0, 1.0, "Ag")], font, DEFAULT_TEXT_COLOUR, DEFAULT_ACCENT_COLOUR), encoding="utf-8")
     cmd = ["ffmpeg", "-hide_banner", "-loglevel", "verbose", "-f", "lavfi", "-i", f"color=c=black:s={WIDTH}x{HEIGHT}:d=0.2",
            "-vf", f"ass=filename={probe.name}", "-frames:v", "1", "-f", "null", "-"]
     try:
-        result = subprocess.run(cmd, capture_output=True, text=True, cwd=tmp, timeout=60)
+        result = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace", cwd=tmp, timeout=60)
     except subprocess.TimeoutExpired:
-        return "could not check the caption font (ffmpeg took over a minute)."
+        return "ffmpeg took over a minute"
+    if "No such filter" in result.stderr:
+        return "this ffmpeg has no libass (the ass filter), so it cannot burn captions"
     match = FONTSELECT.search(result.stderr)
     if not match:
-        return "could not check the caption font (ffmpeg did not say which face it used)."
-    picked = match.group(1)
-    squash = picked.lower().replace("-", "").replace("_", "")
-    if all(word.lower() in squash for word in re.split(r"[ _-]+", font) if word):
+        return "ffmpeg did not say which face it used"
+    return match.group(1), match.group(3)
+
+
+def _name_parts(postscript: str) -> set[str]:
+    """"HelveticaNeue-BoldItalic" -> {"helvetica", "neue", "bold", "italic"}."""
+    spaced = re.sub(r"(?<=[a-z0-9])(?=[A-Z])", " ", postscript)
+    return {p.lower() for p in re.split(r"[ _-]+", spaced) if p}
+
+
+def font_warning(font: str, tmp: str) -> str | None:
+    """A warning when the font is not installed and another face stands in, so a missing font never passes
+    silently. The requested font is missing when libass gives it the same file as a family nobody has, and the
+    face it picked does not carry the requested name."""
+    asked = picked_face(font, tmp)
+    if isinstance(asked, str):
+        return f"could not check the caption font ({asked})."
+    path, name = asked
+    words = [w.lower() for w in re.split(r"[ _-]+", font) if w]
+    if all(w in _name_parts(name) for w in words):
         return None
-    return (f'"{font}" is not installed as its own font file, so the captions use {picked}. Install it, '
+    stand_in = picked_face(NO_SUCH_FONT, tmp)
+    if not isinstance(stand_in, str) and stand_in[0] != path:
+        return None  # a face of its own, named differently (a PostScript short name, say)
+    return (f'"{font}" is not installed as its own font file, so the captions use {name}. Install it, '
             "or pass --font with an installed font.")
 
 
@@ -153,8 +179,8 @@ def main() -> None:
         sys.exit("A short is at most 180 seconds.")
     if not 0 <= args.x <= 1:
         sys.exit("--x must be between 0 and 1.")
-    if not re.fullmatch(r"[A-Za-z0-9 _-]{1,64}", args.font):
-        sys.exit("--font may only contain letters, numbers, spaces, - and _.")
+    if not re.fullmatch(r"[A-Za-z0-9 _-]{1,64}", args.font) or not re.search(r"[A-Za-z0-9]", args.font):
+        sys.exit("--font may only contain letters, numbers, spaces, - and _, with at least one letter or number.")
     for flag, value in (("--text-colour", args.text_colour), ("--accent-colour", args.accent_colour)):
         try:
             hex_to_ass(value)
@@ -179,7 +205,7 @@ def main() -> None:
                "-vf", vf, "-c:v", "libx264", "-preset", "medium", "-crf", "20", "-pix_fmt", "yuv420p",
                "-c:a", "aac", "-b:a", "160k", "-movflags", "+faststart", str(args.out.resolve())]
         try:
-            result = subprocess.run(cmd, capture_output=True, text=True, cwd=tmp, timeout=1800)
+            result = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace", cwd=tmp, timeout=1800)
         except subprocess.TimeoutExpired:
             sys.exit("ffmpeg took longer than 30 minutes and was stopped.")
         if result.returncode != 0:

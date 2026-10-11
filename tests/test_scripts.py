@@ -27,15 +27,41 @@ def test_hex_to_ass_reverses_to_bgr():
     assert short.hex_to_ass("ffffff") == "&H00FFFFFF"
 
 
-@pytest.mark.parametrize(("font", "stderr", "expected"), [
-    ("Satoshi Black", "[ass] fontselect: (Satoshi Black, 700, 0) -> /System/Library/Fonts/Helvetica.ttc, -1, Helvetica-Bold\n",
-     "captions use Helvetica-Bold"),
-    ("Satoshi Black", "[ass] fontselect: (Satoshi Black, 700, 0) -> /Library/Fonts/Satoshi-Black.otf, 0, Satoshi-Black\n", None),
-    ("Arial", "[ass] fontselect: (Arial, 700, 0) -> /Library/Fonts/Arial Bold.ttf, 0, Arial-BoldMT\n", None),
-    ("Satoshi Black", "nothing about fonts\n", "could not check the caption font"),
+@pytest.mark.parametrize(("stderr", "expected"), [
+    ("[Parsed_ass_0] fontselect: (Satoshi Black, 700, 0) -> /System/Library/Fonts/Helvetica.ttc, -1, Helvetica-Bold\n",
+     ("/System/Library/Fonts/Helvetica.ttc", "Helvetica-Bold")),
+    ("x fontselect: (Arial, 700, 0) -> /Users/a b/Fonts/Arial, Bold, 2.ttf, 0, Arial-BoldMT\nnext line\n",
+     ("/Users/a b/Fonts/Arial, Bold, 2.ttf", "Arial-BoldMT")),
+    ("nothing about fonts\n", "ffmpeg did not say which face it used"),
+    ("[AVFilterGraph] No such filter: 'ass'\n", "this ffmpeg has no libass (the ass filter), so it cannot burn captions"),
 ])
-def test_font_warning_names_the_face_that_stood_in(tmp_path, monkeypatch, font, stderr, expected):
+def test_picked_face_reads_the_libass_line(tmp_path, monkeypatch, stderr, expected):
     monkeypatch.setattr(short.subprocess, "run", lambda *a, **k: short.subprocess.CompletedProcess(a, 0, "", stderr))
+    assert short.picked_face("Satoshi Black", str(tmp_path)) == expected
+
+
+HELVETICA = ("/System/Library/Fonts/Helvetica.ttc", "Helvetica-Bold")
+FACES = {
+    short.NO_SUCH_FONT: HELVETICA,
+    "Satoshi Black": HELVETICA,
+    "Hel": HELVETICA,
+    "Helvetica": HELVETICA,
+    "Arial": ("/Library/Fonts/Arial Bold.ttf", "Arial-BoldMT"),
+    "Proxima Nova ExtraBold": ("/Library/Fonts/ProximaNova-Extrabld.otf", "ProximaNova-Extrabld"),
+    "Broken": "ffmpeg did not say which face it used",
+}
+
+
+@pytest.mark.parametrize(("font", "expected"), [
+    ("Satoshi Black", '"Satoshi Black" is not installed as its own font file, so the captions use Helvetica-Bold'),
+    ("Hel", "so the captions use Helvetica-Bold"),
+    ("Helvetica", None),
+    ("Arial", None),
+    ("Proxima Nova ExtraBold", None),
+    ("Broken", "could not check the caption font (ffmpeg did not say which face it used)."),
+])
+def test_font_warning_names_the_face_that_stood_in(tmp_path, monkeypatch, font, expected):
+    monkeypatch.setattr(short, "picked_face", lambda f, tmp: FACES[f])
     got = short.font_warning(font, str(tmp_path))
     assert got is None if expected is None else expected in got
 

@@ -137,6 +137,15 @@ def test_make_short_refuses_a_font_that_could_break_the_subtitle_file(tmp_path, 
 
 
 @pytest.mark.skipif(not HAS_FFMPEG, reason="no ffmpeg")
+@pytest.mark.parametrize("font", ["  ", "-", "_-_"])
+def test_make_short_refuses_a_font_with_no_letters(tmp_path, monkeypatch, clip_inputs, font):
+    video, transcript = clip_inputs
+    with pytest.raises(SystemExit, match="at least one letter"):
+        run_main(short, [str(video), "--start", "0", "--end", "2", "--transcript", str(transcript),
+                         "--out", str(tmp_path / "o.mp4"), "--font", font], monkeypatch)
+
+
+@pytest.mark.skipif(not HAS_FFMPEG, reason="no ffmpeg")
 @pytest.mark.parametrize("flag", ["--accent-colour", "--text-colour"])
 def test_make_short_refuses_a_colour_that_is_not_rrggbb(tmp_path, monkeypatch, clip_inputs, flag):
     video, transcript = clip_inputs

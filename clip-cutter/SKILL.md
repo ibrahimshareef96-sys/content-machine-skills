@@ -38,7 +38,8 @@ making sense to someone who never saw the long version.
    left edge, 1 the right edge). Leave out `--font` and `--accent-colour` and the captions use
    Satoshi Black with the spoken word in green `#34D07F`; both are settings, so the brain's
    values always win. If the font is not installed as its own file, the script warns and names
-   the face that stood in: tell the owner, and cut again with a font they have.
+   the face that stood in. Tell the owner which face the captions used; cut again only if they
+   want another installed font.
 4. **Check every short yourself.** Pull two frames from each
    (`ffmpeg -ss 5 -i short-1.mp4 -frames:v 1 check-1.jpg`, and one near the end) and look at
    them: is the speaker's face in frame, are the captions readable and not over the mouth or

@@ -12,6 +12,7 @@
      system sans stands in when it is missing. */
   :root{
     --bg:#15151C; --text:#F4F1EA; --muted:#A6A4B0; --accent:#34D07F; --on-accent:#15151C;
+    --scrim:rgba(21,21,28,.6); /* the background colour at 60%, behind words on a scene */
     --head:"Satoshi", system-ui, sans-serif; --body:"Satoshi", system-ui, sans-serif;
     --label:"Unbounded", Verdana, sans-serif; --mono:"IBM Plex Mono", "Courier New", monospace;
   }
@@ -22,19 +23,20 @@
   .slide > .scene{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
   /* A soft dark pool under the words when a scene sits behind them. */
   .scrim{position:absolute;inset:0 0 auto 0;height:60%;
-         background:linear-gradient(to bottom, rgba(21,21,28,.6), rgba(21,21,28,0))}
+         background:linear-gradient(to bottom, var(--scrim), transparent)}
   .top{position:absolute;left:88px;right:88px;top:88px;display:flex;justify-content:space-between;
-       font-family:var(--label);font-size:22px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+       font-family:var(--label);font-size:24px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
   .block{position:absolute;left:88px;right:120px;top:190px}
+  /* The number chip is that slide's one accent: a numbered slide leaves <em> out. */
   .num{display:inline-block;background:var(--accent);color:var(--on-accent);font-family:var(--label);font-weight:700;
        font-size:28px;letter-spacing:.04em;padding:8px 20px;border-radius:8px;margin-bottom:30px}
-  h1{font-family:var(--head);font-weight:900;font-size:120px;line-height:.9;letter-spacing:-.05em;text-wrap:balance}
-  h2{font-family:var(--head);font-weight:900;font-size:96px;line-height:.92;letter-spacing:-.05em;margin-bottom:34px;text-wrap:balance}
+  h1{font-family:var(--head);font-weight:900;font-size:120px;line-height:.92;letter-spacing:-.045em;text-wrap:balance}
+  h2{font-family:var(--head);font-weight:900;font-size:96px;line-height:.92;letter-spacing:-.045em;margin-bottom:34px;text-wrap:balance}
   em{font-style:normal;color:var(--accent)}
   p{font-size:36px;line-height:1.38;margin-bottom:12px;max-width:820px;color:var(--muted)}
   code{font-family:var(--mono);font-size:.86em}
   .foot{position:absolute;left:88px;right:88px;bottom:72px;display:flex;justify-content:space-between;
-        font-family:var(--label);font-size:22px;font-weight:700;letter-spacing:.02em;color:var(--muted)}
+        font-family:var(--label);font-size:24px;font-weight:700;letter-spacing:.02em;color:var(--muted)}
 </style>
 </head>
 <body>
